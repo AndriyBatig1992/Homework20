@@ -1,9 +1,11 @@
 from functools import wraps
-from models import Quote
+from models import Quote, Author
 import redis
+import re
+
 from redis_lru import RedisLRU
 
-# Initialize the connection to Redis
+#Initialize the connection to Redis
 client = redis.StrictRedis(host="localhost", port=6379, password=None)
 cache = RedisLRU(client)
 
@@ -46,7 +48,7 @@ def parser(user_input: str) -> tuple:
     return func, args
 
 
-@cache
+
 def all(argument: str) -> None:
     """
     Prints all quotes of authors with tags.
@@ -58,7 +60,7 @@ def all(argument: str) -> None:
     [print(f'{quote.author.fullname}: {", ".join(quote.tags)}') for quote in Quote.objects] or print('Not Found')
 
 
-@cache
+
 def name(author_name: str) -> None:
     """
     Prints quotes for the specified author.
@@ -67,11 +69,18 @@ def name(author_name: str) -> None:
     Returns:
         None
     """
-    [print(f'{author_name}: {", ".join(quote.tags)}') for quote in Quote.objects if
-     author_name.lower() == quote.author.fullname.lower()] or print('Not Found')
+    matching_authors = []
+    author_query = {"fullname": {"$regex": f"^{author_name}", "$options": "i"}}
+    authors = Author.objects(__raw__=author_query)
+
+    for author in authors:
+        matching_authors.append(author.fullname)
+    if len(matching_authors) > 0 and len(author_name) >=2:
+        [print(quote.quote) for quote in Quote.objects if quote.author.fullname in matching_authors]
+    else:
+        print('Not Found')
 
 
-@cache
 def tag(tag_to_find: str) -> None:
     """
     Prints quotes with the specified tag.
@@ -80,10 +89,15 @@ def tag(tag_to_find: str) -> None:
     Returns:
         None
     """
-    [print(quote["quote"]) for quote in Quote.objects if tag_to_find in quote["tags"]] or print('Not Found')
+    tag_regex = re.escape(tag_to_find)  # Екрануємо спеціальні символи
+    tag_query = {"tags": {"$regex": f"^{tag_regex}", "$options": "i"}}
+    quotes = Quote.objects(__raw__=tag_query)
+
+    [print(quote.quote) for quote in quotes if len(tag_to_find) >= 2] or print(
+        'Not Found')
 
 
-@cache
+
 def tags(tags_to_find: str) -> None:
     """
     Prints quotes with the specified tags.
@@ -145,3 +159,5 @@ if __name__ == "__main__":
     except redis.ConnectionError:
         print("Failed to connect to Redis")
     main()
+
+
